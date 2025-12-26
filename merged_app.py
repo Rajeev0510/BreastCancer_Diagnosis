@@ -1,3 +1,8 @@
+import sys
+print("=== BC APP: import started ===", flush=True)
+
+import streamlit as st
+print("=== BC APP: streamlit imported ===", flush=True)
 # merged_app.py
 import os
 import io
