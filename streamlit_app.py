@@ -1,5 +1,8 @@
 # streamlit_app.py
-# Combined Streamlit launcher for two sub-app scripts (BC_IHC + Main App)
+# Combined Streamlit launcher for three sub-app scripts:
+# - BC_IHC
+# - BC Ultrasound
+# - BC CBC
 
 import os
 import io
@@ -38,7 +41,7 @@ def _safe_run_script(path: str, label: str) -> None:
         return None
 
     try:
-        # prevent child scripts from calling set_page_config and crashing the combined app
+        # Prevent child scripts from calling set_page_config and crashing the combined app
         st.set_page_config = _no_op_set_page_config  # type: ignore[assignment]
 
         with contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf):
@@ -68,33 +71,43 @@ def main() -> None:
     st.set_page_config(page_title="BC Diagnosis Portal", layout="wide")
 
     st.title("BC Diagnosis Portal")
-    st.caption("Two apps, one window — switch tabs to view each. (BC_IHC + BC_ultrasound/Main)")
+    st.caption("Three apps, one window — switch tabs to view each (BC IHC + BC Ultrasound + BC CBC).")
 
     this_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # ✅ Update these filenames if your repo uses different names
+    # Default file paths (repo root)
     bc_ihc_path = os.path.join(this_dir, "bc_ihc_onepage.py")
-    main_app_path = os.path.join(this_dir, "app.py")
+    ultrasound_path = os.path.join(this_dir, "app.py")          # BC Ultrasound app
+    cbc_path = os.path.join(this_dir, "bc_cbc_onepage.py")      # BC CBC app
 
     # Optional overrides via Streamlit Cloud Environment Variables
     bc_ihc_path = os.getenv("BC_IHC_PATH", bc_ihc_path)
-    main_app_path = os.getenv("MAIN_APP_PATH", main_app_path)
+    ultrasound_path = os.getenv("MAIN_APP_PATH", ultrasound_path)  # keep compat with your existing env name
+    cbc_path = os.getenv("BC_CBC_PATH", cbc_path)
 
     # Helpful on-page debug to confirm paths in Cloud
     with st.expander("Path debug (click to expand)"):
         st.write("Repo directory:", this_dir)
-        st.write("BC IHC path:", bc_ihc_path)
-        st.write("Main app path:", main_app_path)
-        st.write("BC IHC exists:", os.path.exists(bc_ihc_path))
-        st.write("Main app exists:", os.path.exists(main_app_path))
 
-    tab1, tab2 = st.tabs(["BC IHC", "BC Ultrasound"])
+        st.write("BC IHC path:", bc_ihc_path)
+        st.write("BC IHC exists:", os.path.exists(bc_ihc_path))
+
+        st.write("BC Ultrasound path:", ultrasound_path)
+        st.write("BC Ultrasound exists:", os.path.exists(ultrasound_path))
+
+        st.write("BC CBC path:", cbc_path)
+        st.write("BC CBC exists:", os.path.exists(cbc_path))
+
+    tab1, tab2, tab3 = st.tabs(["BC IHC", "BC Ultrasound", "BC CBC"])
 
     with tab1:
         _safe_run_script(bc_ihc_path, "BC IHC")
 
     with tab2:
-        _safe_run_script(main_app_path, "BC Ultrasound")
+        _safe_run_script(ultrasound_path, "BC Ultrasound")
+
+    with tab3:
+        _safe_run_script(cbc_path, "BC CBC")
 
 
 if __name__ == "__main__":
