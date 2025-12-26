@@ -1,12 +1,14 @@
 streamlit
 pillow
 pandas
-numpy
 matplotlib
 tqdm
 requests
 scikit-image
 scikit-learn
+joblib
+
+numpy==1.26.4
 
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.2.2+cpu
