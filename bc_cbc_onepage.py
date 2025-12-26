@@ -1,6 +1,5 @@
 # bc_cbc_onepage.py
 # BC CBC Streamlit app — form inputs (no file upload)
-# Fix: supports joblib bundles that load as dict (model + metadata)
 
 import os
 import numpy as np
@@ -11,6 +10,9 @@ try:
     import joblib
 except Exception:
     joblib = None
+
+# ✅ Namespace to avoid duplicate Streamlit keys when run via launcher/runpy
+APP_NS = "bc_cbc"
 
 st.set_page_config(page_title="BC CBC", layout="wide")
 st.title("BC CBC — CBC-based Prediction")
@@ -24,66 +26,35 @@ with st.expander("Model configuration", expanded=False):
     st.write("Model path:", CBC_MODEL_PATH)
     st.write("Model exists:", os.path.exists(CBC_MODEL_PATH))
 
-
 @st.cache_resource(show_spinner=False)
-def load_cbc_bundle(path: str):
-    """
-    Returns (model, feature_names_or_None)
-
-    - If joblib contains sklearn model/pipeline directly: returns it.
-    - If joblib contains dict bundle: extracts model from common keys and optionally feature order.
-    """
+def load_cbc_model(path: str):
     if joblib is None:
         raise RuntimeError("joblib is not installed. Add `joblib` to requirements.txt.")
     if not os.path.exists(path):
         raise FileNotFoundError(f"CBC model not found: {path}")
-
-    obj = joblib.load(path)
-
-    # If a bundle dict was saved: {"model": ..., "feature_names": [...], ...}
-    if isinstance(obj, dict):
-        model = None
-        for k in ["pipeline", "model", "estimator", "clf", "classifier"]:
-            if k in obj:
-                model = obj[k]
-                break
-        if model is None:
-            raise ValueError(
-                f"Loaded object is a dict but no model key found. Keys: {list(obj.keys())}"
-            )
-
-        feature_names = obj.get("feature_names") or obj.get("features") or obj.get("columns")
-        return model, feature_names
-
-    # Otherwise it's likely a sklearn estimator/pipeline
-    return obj, None
-
+    return joblib.load(path)
 
 # ------------------ Input schema ------------------
-# IMPORTANT: feature keys MUST match your model training feature names if you use feature order.
 FIELDS = [
+    # left column
     ("WBC (10^3/uL)", "WBC", 7.0, 0.0, 200.0, 0.1),
     ("RBC (10^6/uL)", "RBC", 4.6, 0.0, 20.0, 0.1),
     ("HGB (g/dL)", "HGB", 13.2, 0.0, 30.0, 0.1),
     ("HCT (%)", "HCT", 40.0, 0.0, 80.0, 0.1),
     ("MCV (fL)", "MCV", 88.0, 40.0, 140.0, 0.1),
     ("MCH (pg)", "MCH", 29.0, 10.0, 50.0, 0.1),
-    ("MCHC (g/dL)", "MCHC", 33.0, 10.0, 50.0, 0.1),
-
-    ("Platelets (10^3/uL)", "PLT", 250.0, 0.0, 2000.0, 1.0),
+    # right column
     ("Neutrophils (%)", "Neutrophils", 58.0, 0.0, 100.0, 0.1),
     ("Lymphocytes (%)", "Lymphocytes", 30.0, 0.0, 100.0, 0.1),
     ("Monocytes (%)", "Monocytes", 7.0, 0.0, 100.0, 0.1),
     ("Eosinophils (%)", "Eosinophils", 2.5, 0.0, 100.0, 0.1),
     ("Basophils (%)", "Basophils", 0.5, 0.0, 100.0, 0.1),
-
     ("CRP (mg/L)", "CRP", 2.0, 0.0, 500.0, 0.1),
 ]
 
 half = int(np.ceil(len(FIELDS) / 2))
 left_fields = FIELDS[:half]
 right_fields = FIELDS[half:]
-
 
 # ------------------ UI: Inputs ------------------
 with st.expander("Input CBC markers", expanded=True):
@@ -99,7 +70,7 @@ with st.expander("Input CBC markers", expanded=True):
                 max_value=float(vmax),
                 step=float(step),
                 format="%.3f",
-                key=f"cbc_{key}",
+                key=f"{APP_NS}_cbc_{key}",   # ✅ unique key
             )
 
     with colR:
@@ -111,71 +82,72 @@ with st.expander("Input CBC markers", expanded=True):
                 max_value=float(vmax),
                 step=float(step),
                 format="%.3f",
-                key=f"cbc_{key}",
+                key=f"{APP_NS}_cbc_{key}",   # ✅ unique key
             )
 
+# Build a 1-row dataframe (model input)
 X = pd.DataFrame([values])
 
 with st.expander("Show model input row", expanded=False):
     st.dataframe(X, use_container_width=True)
 
-predict_btn = st.button("Predict", type="primary")
-
+predict = st.button("Predict", type="primary", key=f"{APP_NS}_predict_btn")
 
 # ------------------ Prediction ------------------
-if predict_btn:
-    if not os.path.exists(CBC_MODEL_PATH):
-        st.error(
-            "CBC model not found. Add it to the repo at "
-            "`models/bc_cbc_model.pkl` (or set CBC_MODEL_PATH env var)."
-        )
-        st.stop()
+if predict:
+    if os.path.exists(CBC_MODEL_PATH):
+        try:
+            model = load_cbc_model(CBC_MODEL_PATH)
 
-    try:
-        model, feature_names = load_cbc_bundle(CBC_MODEL_PATH)
+            feature_order = os.getenv("CBC_FEATURE_ORDER", "")
+            if feature_order.strip():
+                cols = [c.strip() for c in feature_order.split(",") if c.strip()]
+                missing = [c for c in cols if c not in X.columns]
+                if missing:
+                    st.error(f"Missing required features for model: {missing}")
+                    st.stop()
+                X_in = X[cols]
+            else:
+                X_in = X
 
-        # If the bundle includes a preferred feature order, align to it
-        if feature_names is not None:
-            cols = [str(c) for c in list(feature_names)]
-            missing = [c for c in cols if c not in X.columns]
-            if missing:
-                st.warning(
-                    "Your model expects some features that are not present in the form. "
-                    f"Missing: {missing}. They will be filled with 0.0."
-                )
-            X_in = X.reindex(columns=cols, fill_value=0.0)
-        else:
-            X_in = X
+            if hasattr(model, "predict_proba"):
+                proba = model.predict_proba(X_in)[0]
+                classes = getattr(model, "classes_", np.array([str(i) for i in range(len(proba))]))
+                pred_idx = int(np.argmax(proba))
+                pred_label = str(classes[pred_idx])
 
-        # Also allow overriding order via env var (optional)
-        env_order = os.getenv("CBC_FEATURE_ORDER", "").strip()
-        if env_order:
-            cols = [c.strip() for c in env_order.split(",") if c.strip()]
-            X_in = X_in.reindex(columns=cols, fill_value=0.0)
+                st.header("Prediction")
+                st.subheader(pred_label)
 
-        # Predict + show probs
-        if hasattr(model, "predict_proba"):
-            proba = model.predict_proba(X_in)[0]
-            classes = getattr(model, "classes_", None)
-            if classes is None:
-                classes = np.array([f"class_{i}" for i in range(len(proba))])
+                st.header("Probabilities")
+                prob_df = pd.DataFrame({"Class": classes, "Probability": proba})
+                st.table(prob_df)
 
-            pred_idx = int(np.argmax(proba))
-            pred_label = str(classes[pred_idx])
+            else:
+                pred = model.predict(X_in)[0]
+                st.header("Prediction")
+                st.subheader(str(pred))
+                st.info("This model does not expose predict_proba(), so probabilities are not available.")
 
-            st.header("Prediction")
-            st.subheader(pred_label)
+        except Exception as e:
+            st.error("CBC prediction failed.")
+            st.exception(e)
 
-            st.header("Probabilities")
-            prob_df = pd.DataFrame({"Class": classes, "Probability": proba})
-            st.table(prob_df)
+    else:
+        st.warning("CBC model not found — showing DEMO prediction. Add models/bc_cbc_model.pkl for real output.")
+        score = float(X.sum(axis=1).iloc[0])
 
-        else:
-            pred = model.predict(X_in)[0]
-            st.header("Prediction")
-            st.subheader(str(pred))
-            st.info("This model does not provide predict_proba(), so probabilities are not available.")
+        p_normal = 1 / (1 + np.exp((score - 250) / 20))
+        p_malignant = 1 - p_normal
+        p_benign = max(0.0, 1.0 - (p_normal + p_malignant))
+        probs = np.array([p_normal, p_benign, p_malignant])
+        probs = probs / probs.sum()
 
-    except Exception as e:
-        st.error("CBC prediction failed.")
-        st.exception(e)
+        classes = np.array(["Normal", "Benign", "Malignant"])
+        pred_label = str(classes[int(np.argmax(probs))])
+
+        st.header("Prediction")
+        st.subheader(pred_label)
+
+        st.header("Probabilities")
+        st.table(pd.DataFrame({"Class": classes, "Probability": probs}))
