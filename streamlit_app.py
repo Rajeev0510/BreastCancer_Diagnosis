@@ -88,13 +88,13 @@ def main() -> None:
         st.write("BC IHC exists:", os.path.exists(bc_ihc_path))
         st.write("Main app exists:", os.path.exists(main_app_path))
 
-    tab1, tab2 = st.tabs(["BC IHC", "Main App"])
+    tab1, tab2 = st.tabs(["BC IHC", "BC Ultrasound"])
 
     with tab1:
         _safe_run_script(bc_ihc_path, "BC IHC")
 
     with tab2:
-        _safe_run_script(main_app_path, "Main App")
+        _safe_run_script(main_app_path, "BC Ultrasound")
 
 
 if __name__ == "__main__":
