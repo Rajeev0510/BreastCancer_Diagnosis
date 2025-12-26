@@ -3,11 +3,11 @@ pillow
 pandas
 numpy
 matplotlib
-torch
-torchvision
 tqdm
+requests
+scikit-image
+scikit-learn
 
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.2.2
-torchvision==0.17.2
-scikit-image
+torch==2.2.2+cpu
+torchvision==0.17.2+cpu
