@@ -1,1 +1,8 @@
 streamlit
+pillow
+pandas
+numpy
+matplotlib
+torch
+torchvision
+tqdm
